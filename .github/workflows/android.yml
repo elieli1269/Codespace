@@ -35,6 +35,23 @@ jobs:
       - name: Install Android platform and build tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Download and prepare real European regional map
+        run: |
+          python -m pip install --disable-pip-version-check pyshp shapely
+          mkdir -p /tmp/ne-admin1 /tmp/ne-admin0
+          curl --fail --location --retry 3 \
+            https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_1_states_provinces.zip \
+            --output /tmp/ne-admin1.zip
+          curl --fail --location --retry 3 \
+            https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_countries.zip \
+            --output /tmp/ne-admin0.zip
+          unzip -q /tmp/ne-admin1.zip -d /tmp/ne-admin1
+          unzip -q /tmp/ne-admin0.zip -d /tmp/ne-admin0
+          python scripts/prepare_map.py \
+            --admin1 /tmp/ne-admin1 \
+            --admin0 /tmp/ne-admin0 \
+            --output app/src/main/assets/europe_regions.json
+
       - name: Build APK
         run: gradle --no-daemon :app:assembleDebug
 
