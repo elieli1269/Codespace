@@ -25,7 +25,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            minifyEnabled = false
+            isMinifyEnabled = false
         }
     }
 }
