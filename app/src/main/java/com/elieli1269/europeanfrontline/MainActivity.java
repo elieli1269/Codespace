@@ -19,6 +19,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
@@ -30,15 +34,19 @@ public class MainActivity extends Activity {
     }
 
     static final class Region {
-        String id, name, owner, city;
+        String id, name, owner, city, countryCode="";
         int x, y, infantry, tanks, rockets, fort;
-        boolean general;
+        float cityX, cityY;
+        boolean general, capital=false;
         String[] links;
+        final ArrayList<Path> mapPaths = new ArrayList<>();
+        final ArrayList<ArrayList<float[]>> mapRings = new ArrayList<>();
         Region(String id, String name, String owner, int x, int y, int inf, int tanks,
                int rockets, int fort, boolean general, String city, String... links) {
             this.id=id; this.name=name; this.owner=owner; this.x=x; this.y=y;
             this.infantry=inf; this.tanks=tanks; this.rockets=rockets; this.fort=fort;
             this.general=general; this.city=city; this.links=links;
+            this.cityX=x; this.cityY=y;
         }
         int strength() { return infantry + tanks*2 + rockets*2 + (general?3:0); }
         int total() { return infantry+tanks+rockets; }
@@ -80,7 +88,89 @@ public class MainActivity extends Activity {
         }
 
         void initMap() {
-            // Each polygon is a strategic province. This is an original schematic map, not a GIS map.
+            if (!loadRealMap()) {
+                initSchematicMap();
+            }
+        }
+
+        boolean loadRealMap() {
+            try (InputStream input = getAssets().open("europe_regions.json");
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                JSONObject root = new JSONObject(new String(output.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+                JSONArray data = root.getJSONArray("regions");
+                for (int i = 0; i < data.length(); i++) {
+                    JSONObject item = data.getJSONObject(i);
+                    String id = item.getString("id");
+                    String name = item.optString("name", "Région");
+                    String owner = item.optString("owner", "Autre");
+                    String city = item.optString("city", "");
+                    JSONArray center = item.getJSONArray("center");
+                    int x = Math.round((float) center.getDouble(0));
+                    int y = Math.round((float) center.getDouble(1));
+                    JSONArray linksJson = item.optJSONArray("links");
+                    String[] links = new String[linksJson == null ? 0 : linksJson.length()];
+                    if (linksJson != null) {
+                        for (int j = 0; j < linksJson.length(); j++) links[j] = linksJson.getString(j);
+                    }
+                    boolean capital = item.optBoolean("capital", false);
+                    Region region = new Region(id, name, owner, x, y,
+                        capital ? 5 : 2, capital ? 1 : 0, 0, capital ? 1 : 0,
+                        capital, city, links);
+                    region.countryCode = item.optString("cc", "");
+                    region.capital = capital;
+                    JSONArray cityPoint = item.optJSONArray("cityPoint");
+                    if (cityPoint != null && cityPoint.length() >= 2) {
+                        region.cityX = (float) cityPoint.getDouble(0);
+                        region.cityY = (float) cityPoint.getDouble(1);
+                    }
+                    JSONArray polygons = item.getJSONArray("polygons");
+                    for (int j = 0; j < polygons.length(); j++) {
+                        JSONArray points = polygons.getJSONArray(j);
+                        if (points.length() < 4) continue;
+                        Path path = new Path();
+                        ArrayList<float[]> ring = new ArrayList<>();
+                        for (int k = 0; k < points.length(); k++) {
+                            JSONArray xy = points.getJSONArray(k);
+                            float px = (float) xy.getDouble(0);
+                            float py = (float) xy.getDouble(1);
+                            if (k == 0) path.moveTo(px, py); else path.lineTo(px, py);
+                            ring.add(new float[]{px, py});
+                        }
+                        path.close();
+                        region.mapPaths.add(path);
+                        region.mapRings.add(ring);
+                    }
+                    if (region.mapPaths.isEmpty()) continue;
+                    regions.add(region);
+                    byId.put(region.id, region);
+                }
+                if (regions.size() < 100) {
+                    regions.clear(); byId.clear(); return false;
+                }
+                String firstFrench = null;
+                selectedId = null;
+                for (Region region : regions) {
+                    if (!"FRA".equals(region.countryCode)) continue;
+                    if (firstFrench == null) firstFrench = region.id;
+                    if ("Paris".equals(region.city)) { selectedId = region.id; break; }
+                }
+                if (selectedId == null) selectedId = firstFrench;
+                if (selectedId == null && !regions.isEmpty()) selectedId = regions.get(0).id;
+                log1 = "La carte géographique est chargée.";
+                log2 = regions.size() + " régions et subdivisions réelles.";
+                log3 = "Sélectionnez une région pour voir ses informations.";
+                return true;
+            } catch (Exception ignored) {
+                regions.clear();
+                byId.clear();
+                return false;
+            }
+        }
+
+        void initSchematicMap() {
             add("ireland","Irlande","Irlande",67,174,2,0,0,0,false,"Dublin","london");
             add("scotland","Écosse","Royaume-Uni",110,118,3,1,0,1,false,"","northengland");
             add("northengland","Nord anglais","Royaume-Uni",133,164,3,1,0,1,false,"","scotland","wales","london");
@@ -191,6 +281,27 @@ public class MainActivity extends Activity {
                 case "Lettonie": return 0xFF8FABC0;
                 case "Estonie": return 0xFF7CA9A3;
                 case "Irlande": return 0xFF699A55;
+                case "Albanie": return 0xFFB45A56;
+                case "Andorre": return 0xFF9A9D7A;
+                case "Bosnie-Herzégovine": return 0xFF8D87AE;
+                case "Croatie": return 0xFF719D97;
+                case "Islande": return 0xFF5D8EA8;
+                case "Kosovo": return 0xFFB8A15C;
+                case "Liechtenstein": return 0xFF8C9160;
+                case "Macédoine du Nord": return 0xFFA77C91;
+                case "Moldavie": return 0xFF7E9D60;
+                case "Monaco": return 0xFFBA8270;
+                case "Monténégro": return 0xFF7A9AB1;
+                case "Russie": return 0xFFB74745;
+                case "Saint-Marin": return 0xFF8A9C6A;
+                case "Serbie": return 0xFFB98A6C;
+                case "Slovaquie": return 0xFF6E9A92;
+                case "Slovénie": return 0xFF8A86B1;
+                case "Ukraine": return 0xFFB79D4D;
+                case "Géorgie": return 0xFF709B7F;
+                case "Arménie": return 0xFFAA7B60;
+                case "Azerbaïdjan": return 0xFF6C93A8;
+                case "Vatican": return 0xFFB4A6A6;
                 default: return 0xFF999A9A;
             }
         }
@@ -226,34 +337,54 @@ public class MainActivity extends Activity {
             c.drawColor(0xFF172C3C);
             p.setStyle(Paint.Style.FILL);
             p.setColor(0xFF213D4F); c.drawRect(0,70,MAP_RIGHT,H,p);
-            // Sea depth lines
             p.setColor(0x223F7793); p.setStrokeWidth(1);
             for(int y=100;y<700;y+=45) {
                 Path path=new Path(); path.moveTo(0,y);
                 for(int x=0;x<MAP_RIGHT;x+=20) path.lineTo(x,y+(float)Math.sin((x+y)*0.017)*5);
                 c.drawPath(path,p);
             }
-            // Main European land silhouette, under the province polygons
-            Path land=new Path();
-            land.moveTo(46,154); land.lineTo(87,121); land.lineTo(164,105); land.lineTo(244,129);
-            land.lineTo(302,158); land.lineTo(367,141); land.lineTo(426,110); land.lineTo(491,86);
-            land.lineTo(557,122); land.lineTo(584,159); land.lineTo(646,170); land.lineTo(721,207);
-            land.lineTo(801,251); land.lineTo(816,306); land.lineTo(777,355); land.lineTo(711,396);
-            land.lineTo(665,427); land.lineTo(612,460); land.lineTo(565,499); land.lineTo(508,476);
-            land.lineTo(458,430); land.lineTo(413,407); land.lineTo(370,425); land.lineTo(323,396);
-            land.lineTo(294,365); land.lineTo(253,366); land.lineTo(223,403); land.lineTo(171,430);
-            land.lineTo(125,394); land.lineTo(145,341); land.lineTo(123,292); land.lineTo(91,253);
-            land.lineTo(56,220); land.close();
-            p.setColor(0xFF334B4D); c.drawPath(land,p);
-            p.setColor(0x193E6459); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
-            for(int i=0;i<14;i++){Path relief=new Path(); relief.moveTo(175+i*9,160+i*5); relief.cubicTo(240+i*6,120+i*4,330+i*4,205+i*3,405+i*3,190+i*5); c.drawPath(relief,p);}
             p.setStyle(Paint.Style.FILL);
-            text(c,"MER DU NORD",330,192,9,0xFF81A9B8,false);
-            text(c,"MER MÉDITERRANÉE",388,496,10,0xFF81A9B8,false);
-            text(c,"MER BALTIQUE",505,162,9,0xFF81A9B8,false);
+            text(c,"OCÉAN ATLANTIQUE",24,430,10,0xFF81A9B8,false);
+            text(c,"MER DU NORD",390,210,9,0xFF81A9B8,false);
+            text(c,"MER BALTIQUE",534,170,9,0xFF81A9B8,false);
+            text(c,"MÉDITERRANÉE",370,670,10,0xFF81A9B8,false);
         }
 
         void drawRegion(Canvas c,Region r) {
+            if (!r.mapPaths.isEmpty()) {
+                int hash=Math.abs(r.id.hashCode());
+                int col=shade(baseColor(r.owner), (hash % 7) - 3);
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(col);
+                for (Path path : r.mapPaths) c.drawPath(path, p);
+
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(0.85f);
+                p.setColor(0xFFE1E3D8);
+                for (Path path : r.mapPaths) c.drawPath(path, p);
+
+                if (r.id.equals(selectedId)) {
+                    p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3.0f);
+                    p.setColor(0xFFFFE7A0);
+                    for (Path path : r.mapPaths) c.drawPath(path, p);
+                }
+                if (r.id.equals(targetId)) {
+                    p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3.0f);
+                    p.setColor(0xFFFF885F);
+                    for (Path path : r.mapPaths) c.drawPath(path, p);
+                }
+                p.setStyle(Paint.Style.FILL);
+                if (!r.city.isEmpty() && (isMainCapital(r.city) || r.id.equals(selectedId) || r.id.equals(targetId))) {
+                    p.setColor(0xFF17232A); c.drawCircle(r.cityX, r.cityY, 3.2f, p);
+                    p.setColor(0xFFFFE7B3); c.drawCircle(r.cityX, r.cityY, 1.7f, p);
+                    text(c, r.city, r.cityX + 4, r.cityY - 3, 8.5f, 0xFFFFF3D7, true);
+                }
+                if (r.id.equals(selectedId) || r.id.equals(targetId)) {
+                    p.setColor(0xFFFFF3CF);
+                    c.drawCircle(r.x, r.y, 2.2f, p);
+                }
+                return;
+            }
             int hash=Math.abs(r.id.hashCode());
             float rx=28+(hash%5), ry=20+(hash%4);
             Path path=new Path();
@@ -297,27 +428,27 @@ public class MainActivity extends Activity {
             }
         }
 
+        boolean isMainCapital(String city) {
+            return Arrays.asList("Paris","Londres","Berlin","Madrid","Rome","Varsovie","Moscou",
+                "Lisbonne","Athènes","Vienne","Bruxelles","Amsterdam","Stockholm","Helsinki",
+                "Kyiv","Bucarest","Dublin","Copenhague","Oslo","Prague","Belgrade","Ankara",
+                "Reykjavik","Minsk","Sofia","Zagreb","Budapest","Riga","Vilnius","Tallinn").contains(city);
+        }
+
         boolean isMajor(String id) {
             return Arrays.asList("paris","london","berlin","moscow","rome","madrid","warsaw","brussels",
                 "amsterdam","stockholm","helsinki","athens","istanbul","kyiv","bucharest","belgrade","prague","lisbon").contains(id);
         }
 
         void drawFrontLines(Canvas c) {
-            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
-            for(Region r:regions) for(String id:r.links) {
-                Region other=byId.get(id);
-                if(other!=null && r.owner.equals("France") && !other.owner.equals("France") && r.id.compareTo(other.id)<0) {
-                    p.setColor(0xFFFFDB79); p.setPathEffect(new android.graphics.DashPathEffect(new float[]{5,4},0));
-                    c.drawLine(r.x,r.y,other.x,other.y,p);
-                }
-            }
-            p.setPathEffect(null); p.setStyle(Paint.Style.FILL);
+            // Regional polygons now provide the real geographic boundaries.
+            // No schematic centroid-to-centroid lines are drawn across the map.
         }
 
         void drawHeader(Canvas c) {
             rounded(c,0,0,W,64,0,0xFF101F2B);
             text(c,"THE WARGAME",24,29,22,0xFFF5F0E2,true);
-            text(c,"EUROPE  •  CAMPAGNE HISTORIQUE",26,49,10,0xFF9FB2BC,true);
+            text(c,"EUROPE  •  FRONTIÈRES ADMINISTRATIVES RÉELLES",26,49,10,0xFF9FB2BC,true);
             rounded(c,415,12,637,52,8,0xFF263D4C);
             text(c,"TOUR "+turn,432,35,13,0xFFFFD58D,true);
             rounded(c,650,12,842,52,8,0xFF263D4C);
@@ -337,7 +468,7 @@ public class MainActivity extends Activity {
             Region s=byId.get(selectedId), t=targetId==null?null:byId.get(targetId);
             text(c,"RÉGION SÉLECTIONNÉE",895,132,9,0xFF9DB2BD,true);
             if(s!=null) {
-                text(c,s.name,895,155,17,Color.WHITE,true);
+                text(c,clip(s.name,24),895,155,16,Color.WHITE,true);
                 text(c,"Contrôle : "+s.owner,895,174,11,baseColor(s.owner),true);
                 text(c,"Infanterie  "+s.infantry+"    Blindés  "+s.tanks,895,196,11,0xFFE4E7E7,false);
                 text(c,"Roquettes   "+s.rockets+"    Forts   "+s.fort,895,214,11,0xFFE4E7E7,false);
@@ -374,11 +505,11 @@ public class MainActivity extends Activity {
 
         void drawLegend(Canvas c) {
             int y=708;
-            String[] names={"France","Allemagne","URSS","Royaume-Uni"};
-            int[] xs={22,112,225,315};
+            String[] names={"France","Allemagne","Espagne","Italie","Royaume-Uni","Russie"};
+            int[] xs={20,119,225,323,414,548};
             for(int i=0;i<names.length;i++) {
-                p.setColor(baseColor(names[i])); c.drawCircle(xs[i],y-4,5,p);
-                text(c,names[i],xs[i]+9,y,9,0xFFD0D8D9,false);
+                p.setColor(baseColor(names[i])); c.drawCircle(xs[i],y-4,4.5f,p);
+                text(c,names[i],xs[i]+8,y,8.5f,0xFFD0D8D9,false);
             }
         }
 
@@ -400,13 +531,34 @@ public class MainActivity extends Activity {
         }
 
         Region hit(float x,float y) {
+            for (int i=regions.size()-1; i>=0; i--) {
+                Region r=regions.get(i);
+                if (!r.mapRings.isEmpty()) {
+                    for (ArrayList<float[]> ring : r.mapRings) {
+                        if (pointInPolygon(x,y,ring)) return r;
+                    }
+                }
+            }
             Region best=null; float score=Float.MAX_VALUE;
             for(Region r:regions) {
+                if (!r.mapRings.isEmpty()) continue;
                 float dx=(x-r.x)/34f, dy=(y-r.y)/27f;
                 float d=dx*dx+dy*dy;
                 if(d<1.0f && d<score) {score=d;best=r;}
             }
             return best;
+        }
+
+        boolean pointInPolygon(float x, float y, ArrayList<float[]> points) {
+            boolean inside=false;
+            for(int i=0,j=points.size()-1;i<points.size();j=i++) {
+                float xi=points.get(i)[0], yi=points.get(i)[1];
+                float xj=points.get(j)[0], yj=points.get(j)[1];
+                boolean crosses=((yi>y)!=(yj>y)) &&
+                    (x < (xj-xi)*(y-yi)/(yj-yi+0.000001f)+xi);
+                if(crosses) inside=!inside;
+            }
+            return inside;
         }
 
         boolean adjacent(Region a,Region b) {
