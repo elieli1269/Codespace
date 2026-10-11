@@ -229,6 +229,14 @@ public class MainActivity extends Activity {
         }
 
         void loadSave() {
+            // The map changed from a hand-drawn prototype to current real borders.
+            // Reset incompatible old saves once so old IDs/owners cannot corrupt it.
+            int saveVersion = 2;
+            if (prefs.getInt("save_version", 0) != saveVersion) {
+                prefs.edit().clear().putInt("save_version", saveVersion).apply();
+                save();
+                return;
+            }
             if (!prefs.getBoolean("started", false)) { save(); return; }
             month=prefs.getInt("month",8); year=prefs.getInt("year",1939); turn=prefs.getInt("turn",1);
             supplies=prefs.getInt("supplies",130); manpower=prefs.getInt("manpower",90);
@@ -237,6 +245,7 @@ public class MainActivity extends Activity {
                 if(raw==null) continue;
                 String[] a=raw.split("\\|",-1);
                 try {
+                    if (a.length < 6) continue;
                     r.owner=a[0]; r.infantry=Integer.parseInt(a[1]); r.tanks=Integer.parseInt(a[2]);
                     r.rockets=Integer.parseInt(a[3]); r.fort=Integer.parseInt(a[4]); r.general=Boolean.parseBoolean(a[5]);
                 } catch(Exception ignored) {}
@@ -271,6 +280,7 @@ public class MainActivity extends Activity {
                 case "Suisse": return 0xFFB65B55;
                 case "Autriche": return 0xFFBA866D;
                 case "Tchécoslovaquie": return 0xFF8E8DCC;
+                case "Tchéquie": return 0xFF8E8DCC;
                 case "Hongrie": return 0xFF8C9C55;
                 case "Roumanie": return 0xFF6F9F52;
                 case "Yougoslavie": return 0xFFAD8CBA;
@@ -474,32 +484,41 @@ public class MainActivity extends Activity {
                 text(c,"Roquettes   "+s.rockets+"    Forts   "+s.fort,895,214,11,0xFFE4E7E7,false);
                 text(c,"Général : "+(s.general?"affecté":"aucun"),895,232,11,s.general?0xFFFFD34F:0xFFABB9C0,false);
             }
-            rounded(c,890,244,1180,297,7,0xFF1B303D);
+            rounded(c,890,244,1180,318,7,0xFF1B303D);
             if(t!=null) {
-                text(c,"CIBLE",903,262,9,0xFFFF9877,true);
-                text(c,t.name,903,281,14,Color.WHITE,true);
-                text(c,t.owner+"  •  force "+t.strength(),903,289,10,0xFFE0D9CF,false);
+                text(c,"CIBLE D'ATTAQUE",903,261,9,0xFFFF9877,true);
+                text(c,clip(t.name,28),903,281,13,Color.WHITE,true);
+                text(c,clip(t.owner+"  •  "+t.total()+" unités • force "+t.strength(),39),903,299,9.5f,0xFFE0D9CF,false);
             } else {
-                text(c,"OBJECTIF",903,265,9,0xFF9DB2BD,true);
-                text(c,"Touchez une région",903,282,12,0xFFE4E7E7,true);
-                text(c,"ennemie voisine pour",903,297,12,0xFFE4E7E7,true);
-                text(c,"préparer une offensive.",903,312,12,0xFFE4E7E7,true);
+                text(c,"COMMENT CONQUÉRIR ?",903,261,9,0xFF9DB2BD,true);
+                text(c,"1. Touchez une région française.",903,280,10.5f,0xFFE4E7E7,true);
+                text(c,"2. Touchez un voisin d'une autre couleur.",903,297,9.5f,0xFFE4E7E7,true);
+                text(c,"3. Appuyez sur ATTAQUER.",903,312,9.5f,0xFFFFD58D,true);
             }
 
-            button(c,890,326,1180,365,"⚔  ATTAQUER",0xFF974B42,targetId!=null && s!=null && t!=null && "France".equals(s.owner));
-            button(c,890,373,1033,416,"+ INFANTERIE",0xFF2C5C80,s!=null && "France".equals(s.owner));
-            button(c,1040,373,1180,416,"+ BLINDÉS",0xFF725A35,s!=null && "France".equals(s.owner));
-            button(c,890,424,1033,467,"+ ROQUETTES",0xFF604878,s!=null && "France".equals(s.owner));
-            button(c,1040,424,1180,467,"FORTIFIER",0xFF426C59,s!=null && "France".equals(s.owner));
-            button(c,890,475,1180,516,"AFFECTER UN GÉNÉRAL",0xFF77642F,s!=null && "France".equals(s.owner));
+            boolean validTarget = targetId!=null && s!=null && t!=null &&
+                "France".equals(s.owner) && !"France".equals(t.owner) &&
+                adjacent(s,t) && s.total()>0 && !gameOver;
+            button(c,890,326,1180,365,t==null?"⚔  ATTAQUER":"⚔  ATTAQUER : "+clip(t.name,12),
+                0xFF974B42,validTarget);
+            button(c,890,373,1033,416,"+ INFANTERIE",0xFF2C5C80,
+                s!=null && "France".equals(s.owner) && supplies>=16 && manpower>=8 && !gameOver);
+            button(c,1040,373,1180,416,"+ BLINDÉS",0xFF725A35,
+                s!=null && "France".equals(s.owner) && supplies>=30 && manpower>=12 && !gameOver);
+            button(c,890,424,1033,467,"+ ROQUETTES",0xFF604878,
+                s!=null && "France".equals(s.owner) && supplies>=24 && manpower>=10 && !gameOver);
+            button(c,1040,424,1180,467,"FORTIFIER",0xFF426C59,
+                s!=null && "France".equals(s.owner) && supplies>=28 && s.fort<5 && !gameOver);
+            button(c,890,475,1180,516,"AFFECTER UN GÉNÉRAL",0xFF77642F,
+                s!=null && "France".equals(s.owner) && !s.general && supplies>=35 && !gameOver);
             rounded(c,890,526,1180,586,7,0xFF1C303C);
             text(c,"DERNIERS ÉVÉNEMENTS",902,544,9,0xFF9DB2BD,true);
             text(c,clip(log1,38),902,559,10,0xFFE7E6DF,false);
             text(c,clip(log2,38),902,572,10,0xFFE7E6DF,false);
             text(c,clip(log3,38),902,583,10,0xFFE7E6DF,false);
             button(c,890,601,1180,652,"TERMINER LE MOIS  ▶",0xFF9C7139,!gameOver);
-            text(c,"Cliquez une province. Les bots jouent",892,674,9,0xFF9FB2BC,false);
-            text(c,"automatiquement au changement de mois.",892,688,9,0xFF9FB2BC,false);
+            text(c,"Sélection → voisin ennemi → ATTAQUER",892,674,9,0xFF9FB2BC,true);
+            text(c,"Les autres pays jouent à chaque mois.",892,688,9,0xFF9FB2BC,false);
             drawLegend(c);
         }
 
@@ -531,22 +550,24 @@ public class MainActivity extends Activity {
         }
 
         Region hit(float x,float y) {
+            // On a phone, tiny administrative regions can be smaller than a fingertip.
+            // Prefer a region's real interior point when it is close to the tap.
+            Region nearest=null;
+            float nearestDistance=Float.MAX_VALUE;
+            for(Region r:regions) {
+                float dx=x-r.x, dy=y-r.y;
+                float d=dx*dx+dy*dy;
+                if(d<nearestDistance) {nearestDistance=d;nearest=r;}
+            }
+            if(nearest!=null && nearestDistance<=22f*22f) return nearest;
+
             for (int i=regions.size()-1; i>=0; i--) {
                 Region r=regions.get(i);
-                if (!r.mapRings.isEmpty()) {
-                    for (ArrayList<float[]> ring : r.mapRings) {
-                        if (pointInPolygon(x,y,ring)) return r;
-                    }
+                for (ArrayList<float[]> ring : r.mapRings) {
+                    if (pointInPolygon(x,y,ring)) return r;
                 }
             }
-            Region best=null; float score=Float.MAX_VALUE;
-            for(Region r:regions) {
-                if (!r.mapRings.isEmpty()) continue;
-                float dx=(x-r.x)/34f, dy=(y-r.y)/27f;
-                float d=dx*dx+dy*dy;
-                if(d<1.0f && d<score) {score=d;best=r;}
-            }
-            return best;
+            return nearestDistance<=34f*34f ? nearest : null;
         }
 
         boolean pointInPolygon(float x, float y, ArrayList<float[]> points) {
@@ -576,7 +597,6 @@ public class MainActivity extends Activity {
                 else if(y>=424&&y<=467) {
                     if(x<1035) recruit("rockets"); else fortify();
                 }
-                else if(y>=424&&y<=467 && x>=1040) fortify();
                 else if(y>=475&&y<=516) assignGeneral();
                 else if(y>=601&&y<=652) nextMonth();
                 invalidate(); return true;
@@ -584,11 +604,22 @@ public class MainActivity extends Activity {
             Region r=hit(x,y);
             if(r!=null) {
                 Region s=byId.get(selectedId);
-                if("France".equals(r.owner)) { selectedId=r.id; targetId=null; }
-                else if(s!=null && "France".equals(s.owner) && adjacent(s,r)) { targetId=r.id; }
-                else {
+                if("France".equals(r.owner)) {
+                    selectedId=r.id;
                     targetId=null;
-                    log1="Cette région n'est pas adjacente à votre armée.";
+                    setLog("Région française sélectionnée : "+r.name,
+                        "Choisissez une région ennemie voisine sur la carte.",
+                        "Puis touchez ATTAQUER pour tenter de la conquérir.");
+                } else if(s!=null && "France".equals(s.owner) && adjacent(s,r)) {
+                    targetId=r.id;
+                    setLog("Cible choisie : "+r.name,
+                        "Contrôle actuel : "+r.owner+".",
+                        "Touchez ATTAQUER pour lancer la conquête.");
+                } else {
+                    targetId=null;
+                    setLog("Cible invalide : choisissez un voisin ennemi.",
+                        "La région visée doit partager une frontière avec "+(s==null?"votre région":s.name)+".",
+                        "Les provinces surlignées indiquent votre sélection.");
                 }
                 invalidate(); return true;
             }
@@ -629,24 +660,53 @@ public class MainActivity extends Activity {
 
         void attack() {
             Region s=byId.get(selectedId), t=targetId==null?null:byId.get(targetId);
-            if(gameOver||s==null||t==null||!"France".equals(s.owner)||!adjacent(s,t)) {
-                setLog("Choisissez votre province puis une cible voisine.",log2,log3);invalidate();return;
+            if(gameOver || s==null || t==null || !"France".equals(s.owner) ||
+                    "France".equals(t.owner) || !adjacent(s,t)) {
+                setLog("Sélectionnez une région française puis une cible ennemie voisine.",
+                    "Étape 1 : touchez une région bleue.", "Étape 2 : touchez une région ennemie voisine.");
+                invalidate();return;
             }
-            if(s.total()<1){setLog("Aucune unité disponible pour attaquer.",log2,log3);invalidate();return;}
+            if(s.total()<1) {
+                setLog("Cette région n'a plus d'unités prêtes à combattre.",
+                    "Recrutez des troupes ou sélectionnez une autre région française.",log3);
+                invalidate();return;
+            }
+            String captured=t.name;
             boolean won=battle(s,t,true);
             if(won) {
-                String captured=t.name;
                 t.owner="France";
-                // A portion of the surviving force occupies the new province.
-                int moveInf=Math.max(1,s.infantry/2);
-                int moveTank=s.tanks/2, moveRockets=s.rockets/2;
-                s.infantry=Math.max(0,s.infantry-moveInf); s.tanks=Math.max(0,s.tanks-moveTank); s.rockets=Math.max(0,s.rockets-moveRockets);
-                t.infantry=Math.max(1,moveInf); t.tanks=moveTank; t.rockets=moveRockets;
+                transferOccupationForce(s,t);
+                t.fort=Math.max(0,t.fort-1);
                 t.general=false;
-                setLog("Victoire : "+captured+" est conquise !","L'armée française a pris position.",log3);
-                if(countOwned("France")>=25){gameOver=true;endMessage="VICTOIRE EN EUROPE !";}
-            } else setLog("Attaque repoussée à "+t.name+".","Vos troupes ont subi des pertes.",log3);
+                setLog("VICTOIRE : "+captured+" est conquise !",
+                    "La région passe sous contrôle français.", "Appuyez sur Terminer le mois pour continuer.");
+                if(countOwned("France") >= Math.ceil(regions.size() * 0.5)) {
+                    gameOver=true;endMessage="VICTOIRE : DOMINATION DE L'EUROPE !";
+                }
+            } else {
+                setLog("Attaque repoussée à "+captured+".",
+                    "Des unités ont été perdues pendant le combat.", "Essayez de renforcer cette région avant une nouvelle attaque.");
+            }
             targetId=null;save();invalidate();
+        }
+
+        void transferOccupationForce(Region from, Region to) {
+            int moveInf=from.infantry/2;
+            int moveTanks=from.tanks/2;
+            int moveRockets=from.rockets/2;
+            // If only one unit survived, move that actual unit instead of creating
+            // a fictional extra infantry unit in the captured region.
+            if(moveInf+moveTanks+moveRockets==0) {
+                if(from.infantry>0) moveInf=1;
+                else if(from.tanks>0) moveTanks=1;
+                else if(from.rockets>0) moveRockets=1;
+            }
+            from.infantry-=moveInf;
+            from.tanks-=moveTanks;
+            from.rockets-=moveRockets;
+            to.infantry=moveInf;
+            to.tanks=moveTanks;
+            to.rockets=moveRockets;
         }
 
         boolean battle(Region attacker,Region defender,boolean playerAttack) {
@@ -680,26 +740,25 @@ public class MainActivity extends Activity {
             // Every non-player country is a bot. Each bot evaluates its borders at every turn.
             List<Region> order=new ArrayList<>(regions);Collections.shuffle(order,random);
             int botBattles=0;
+            int botAttempts=0;
+            int maxBotAttempts=Math.min(60,Math.max(16,regions.size()/30));
             for(Region a:order) {
+                if(botAttempts>=maxBotAttempts) break;
                 if("France".equals(a.owner)||a.total()<1)continue;
                 List<Region> options=new ArrayList<>();
                 for(String id:a.links) {
                     Region b=byId.get(id);
-                    if(b!=null&&!b.owner.equals(a.owner)&&b.total()>0) options.add(b);
+                    // Empty garrisons can still be conquered.
+                    if(b!=null&&!b.owner.equals(a.owner)) options.add(b);
                 }
                 if(options.isEmpty()||random.nextDouble()>0.24)continue;
+                botAttempts++;
                 Region target=options.get(random.nextInt(options.size()));
                 String oldOwner=target.owner;
                 if(battle(a,target,false)) {
                     target.owner=a.owner;
-                    int movedInf=Math.max(1,a.infantry/2);
-                    int movedTanks=a.tanks/2, movedRockets=a.rockets/2;
-                    target.infantry=movedInf;target.tanks=movedTanks;target.rockets=movedRockets;
+                    transferOccupationForce(a,target);
                     target.fort=Math.max(0,target.fort-1);target.general=false;
-                    a.infantry=Math.max(0,a.infantry-movedInf);
-                    a.tanks=Math.max(0,a.tanks-movedTanks);
-                    a.rockets=Math.max(0,a.rockets-movedRockets);
-                    if(a.total()==0)a.infantry=1;
                     if("France".equals(oldOwner)) battleNote="ALERTE : "+target.name+" est attaquée !";
                     else battleNote="Le front change près de "+target.name+".";
                     botBattles++;
@@ -708,6 +767,9 @@ public class MainActivity extends Activity {
             if(botBattles==0)battleNote="Les états-majors préparent leurs prochaines opérations.";
             setLog(months[month]+" "+year+" : ravitaillement reçu.",battleNote,"Les pays adverses sont contrôlés par les bots.");
             if(countOwned("France")==0) {gameOver=true;endMessage="LA FRANCE A ÉTÉ CONQUISE";}
+            else if(countOwned("France") >= Math.ceil(regions.size() * 0.5)) {
+                gameOver=true;endMessage="VICTOIRE : DOMINATION DE L'EUROPE !";
+            }
             save();invalidate();
         }
     }
