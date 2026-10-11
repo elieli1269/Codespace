@@ -237,7 +237,9 @@ def main():
         output.append({
             "id": r["id"], "name": r["name"], "owner": r["owner"], "cc": r["cc"],
             "city": r["city"], "capital": r["capital"],
-            "center": r["center"], "polygons": out_polys,
+            "center": r["center"],
+            "cityPoint": project(*CAPITALS[r["cc"]][1:]) if r["capital"] else r["center"],
+            "polygons": out_polys,
             "links": [candidates[j]["id"] for j in sorted(links[i])]
         })
 
