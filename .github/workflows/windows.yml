@@ -1,0 +1,83 @@
+name: Build TheWarGame for Windows
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows EXE installer and portable app
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate the real Europe map
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pyshp shapely
+          $admin1 = Join-Path $env:RUNNER_TEMP "ne-admin1"
+          $admin0 = Join-Path $env:RUNNER_TEMP "ne-admin0"
+          New-Item -ItemType Directory -Force $admin1 | Out-Null
+          New-Item -ItemType Directory -Force $admin0 | Out-Null
+          Invoke-WebRequest -Uri "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_1_states_provinces.zip" -OutFile (Join-Path $env:RUNNER_TEMP "ne-admin1.zip")
+          Invoke-WebRequest -Uri "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_countries.zip" -OutFile (Join-Path $env:RUNNER_TEMP "ne-admin0.zip")
+          Expand-Archive -Path (Join-Path $env:RUNNER_TEMP "ne-admin1.zip") -DestinationPath $admin1 -Force
+          Expand-Archive -Path (Join-Path $env:RUNNER_TEMP "ne-admin0.zip") -DestinationPath $admin0 -Force
+          New-Item -ItemType Directory -Force "desktop/src/main/resources" | Out-Null
+          python scripts/prepare_map.py --admin1 $admin1 --admin0 $admin0 --output "desktop/src/main/resources/europe_regions.json"
+
+      - name: Compile and package the desktop application
+        run: mvn -B -f desktop/pom.xml clean package
+
+      - name: Prepare jpackage input
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "desktop/target/input" | Out-Null
+          Copy-Item "desktop/target/TheWarGame.jar" "desktop/target/input/TheWarGame.jar"
+          if (!(Test-Path "desktop/target/input/TheWarGame.jar")) { throw "TheWarGame.jar was not generated." }
+
+      - name: Create Windows EXE installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "dist/installer" | Out-Null
+          jpackage --type exe --name TheWarGame --app-version 1.0.0 --vendor elieli1269 --description "Jeu de stratégie européen avec frontières actuelles" --input "desktop/target/input" --main-jar "TheWarGame.jar" --main-class "com.elieli1269.desktop.TheWarGameDesktop" --dest "dist/installer" --win-menu --win-shortcut --win-per-user-install --win-dir-chooser
+
+      - name: Create portable EXE application
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "dist/portable" | Out-Null
+          jpackage --type app-image --name TheWarGame --app-version 1.0.0 --vendor elieli1269 --description "Jeu de stratégie européen avec frontières actuelles" --input "desktop/target/input" --main-jar "TheWarGame.jar" --main-class "com.elieli1269.desktop.TheWarGameDesktop" --dest "dist/portable"
+          Compress-Archive -Path "dist/portable/TheWarGame" -DestinationPath "dist/TheWarGame-Windows-Portable.zip" -Force
+
+      - name: Upload EXE installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheWarGame-Windows-Setup-EXE
+          path: dist/installer/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable app package
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheWarGame-Windows-Portable-EXE
+          path: dist/TheWarGame-Windows-Portable.zip
+          if-no-files-found: error
+          retention-days: 30
