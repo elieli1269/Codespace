@@ -420,7 +420,7 @@ public class MainActivity extends Activity {
             float x=e.getX()/(getWidth()/(float)W), y=e.getY()/(getHeight()/(float)H);
             if(x>=870) {
                 if(y>=326&&y<=365) attack();
-                else if(y>=373&&y<=416) recruit("infantry");
+                else if(y>=373&&y<=416) { if(x<1035) recruit("infantry"); else recruit("tanks"); }
                 else if(y>=424&&y<=467) {
                     if(x<1035) recruit("rockets"); else fortify();
                 }
@@ -540,9 +540,14 @@ public class MainActivity extends Activity {
                 String oldOwner=target.owner;
                 if(battle(a,target,false)) {
                     target.owner=a.owner;
-                    target.infantry=Math.max(1,a.infantry/2);target.tanks=a.tanks/2;target.rockets=a.rockets/2;
+                    int movedInf=Math.max(1,a.infantry/2);
+                    int movedTanks=a.tanks/2, movedRockets=a.rockets/2;
+                    target.infantry=movedInf;target.tanks=movedTanks;target.rockets=movedRockets;
                     target.fort=Math.max(0,target.fort-1);target.general=false;
-                    a.infantry=Math.max(1,a.infantry-target.infantry);
+                    a.infantry=Math.max(0,a.infantry-movedInf);
+                    a.tanks=Math.max(0,a.tanks-movedTanks);
+                    a.rockets=Math.max(0,a.rockets-movedRockets);
+                    if(a.total()==0)a.infantry=1;
                     if("France".equals(oldOwner)) battleNote="ALERTE : "+target.name+" est attaquée !";
                     else battleNote="Le front change près de "+target.name+".";
                     botBattles++;
