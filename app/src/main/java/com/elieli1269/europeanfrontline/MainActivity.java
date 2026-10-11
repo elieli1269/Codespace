@@ -240,6 +240,8 @@ public class MainActivity extends Activity {
             if (!prefs.getBoolean("started", false)) { save(); return; }
             month=prefs.getInt("month",8); year=prefs.getInt("year",1939); turn=prefs.getInt("turn",1);
             supplies=prefs.getInt("supplies",130); manpower=prefs.getInt("manpower",90);
+            gameOver=prefs.getBoolean("game_over",false);
+            endMessage=prefs.getString("end_message","");
             for (Region r:regions) {
                 String raw=prefs.getString("region_"+r.id,null);
                 if(raw==null) continue;
@@ -254,6 +256,8 @@ public class MainActivity extends Activity {
 
         void save() {
             SharedPreferences.Editor e=prefs.edit().putBoolean("started",true)
+                .putBoolean("game_over",gameOver).putString("end_message",endMessage)
+                .putInt("save_version",2)
                 .putInt("month",month).putInt("year",year).putInt("turn",turn)
                 .putInt("supplies",supplies).putInt("manpower",manpower);
             for(Region r:regions) e.putString("region_"+r.id,r.owner+"|"+r.infantry+"|"+r.tanks+"|"+r.rockets+"|"+r.fort+"|"+r.general);
@@ -372,6 +376,16 @@ public class MainActivity extends Activity {
                 p.setStrokeWidth(0.85f);
                 p.setColor(0xFFE1E3D8);
                 for (Path path : r.mapPaths) c.drawPath(path, p);
+
+                Region origin=byId.get(selectedId);
+                if(origin!=null && "France".equals(origin.owner) &&
+                        !"France".equals(r.owner) && adjacent(origin,r)) {
+                    // Highlight every legal attack target so players can see where
+                    // their selected region is allowed to attack.
+                    p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2.0f);
+                    p.setColor(0xFFFFC45C);
+                    for(Path path:r.mapPaths) c.drawPath(path,p);
+                }
 
                 if (r.id.equals(selectedId)) {
                     p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3.0f);
@@ -712,10 +726,16 @@ public class MainActivity extends Activity {
         boolean battle(Region attacker,Region defender,boolean playerAttack) {
             double ap=(attacker.infantry+attacker.tanks*2.25+attacker.rockets*1.75+(attacker.general?3:0))*(0.88+random.nextDouble()*0.28);
             double dp=(defender.infantry+defender.tanks*2.2+defender.rockets*1.7+defender.fort*2.0+(defender.general?3:0))*(0.9+random.nextDouble()*0.25);
-            int attackCas=Math.max(1,(int)Math.round(dp/Math.max(1,ap)*2.2));
-            int defendCas=Math.max(1,(int)Math.round(ap/Math.max(1,dp)*2.2));
-            removeUnits(attacker,attackCas); removeUnits(defender,defendCas);
-            return ap>dp && attacker.total()>0;
+            boolean attackerWins=ap>dp;
+            int desiredAttackLosses=Math.max(1,(int)Math.round(dp/Math.max(1,ap)*1.8));
+            // A victorious attack must leave at least one real surviving unit.
+            int maxAttackLosses=Math.max(0,attacker.total()-(attackerWins?1:0));
+            int attackCas=Math.min(maxAttackLosses,desiredAttackLosses);
+            int defendCas=defender.total()==0 ? 0 :
+                Math.min(defender.total(),Math.max(1,(int)Math.round(ap/Math.max(1,dp)*1.8)));
+            removeUnits(attacker,attackCas);
+            removeUnits(defender,defendCas);
+            return attackerWins && attacker.total()>0;
         }
 
         void removeUnits(Region r,int n) {
