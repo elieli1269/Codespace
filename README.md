@@ -3,15 +3,14 @@
 TheWarGame est un prototype Android en mode paysage de stratégie historique au tour par tour. Tu joues la France ; tous les autres pays sont commandés automatiquement par l'IA.
 
 ## Fonctionnalités
-- Carte stratégique stylisée de l'Europe avec provinces, frontières, capitales et couleurs distinctes par pays.
-- Bots nationaux qui évaluent les frontières et peuvent attaquer/conquérir des provinces à chaque changement de mois.
-- Campagne commençant en septembre 1939 ; les mois et années avancent au fil des tours.
-- Infanterie, blindés, artillerie à roquettes, généraux et fortifications.
-- Résolution des batailles selon les effectifs, les unités, les généraux et les défenses.
-- Recrutement avec ravitaillement et effectifs, sauvegarde locale automatique.
-- Fonctionne hors ligne. Aucune clé API n'est nécessaire pour jouer.
+- Carte géographique réelle de l'Europe avec les polygones des régions/provinces administratives de premier niveau.
+- Frontières et connexions entre régions calculées à partir de leurs véritables limites géographiques, pas de simples points reliés à la main.
+- Couleurs distinctes par pays, sélection des régions et affichage de villes capitales.
+- Bots nationaux, progression mensuelle et sauvegarde locale.
+- Fonctionne hors ligne après installation. Aucune clé API n'est nécessaire pour jouer.
 
-La carte regroupe des provinces stratégiques à travers l'Europe. C'est une carte de jeu dessinée spécialement pour ce prototype, pas encore un relevé géographique exact de toutes les subdivisions administratives officielles. Les graphismes sont en 2D tactique et pourront être approfondis.
+### Données cartographiques
+Les limites proviennent du jeu de données **Natural Earth 1:10m Admin-1 States/Provinces**, avec des contours nationaux en complément pour quelques micro-États. La préparation est exécutée automatiquement par GitHub Actions et intègre les polygones dans l'APK. Les pays n'ont pas tous le même niveau de subdivision administrative, donc la granularité varie d'un pays à l'autre. Source : https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/.
 
 ## Commandes
 1. Sélectionne une région française.
